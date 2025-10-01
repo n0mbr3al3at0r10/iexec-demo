@@ -3,10 +3,8 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import { IExecDataProtectorCore, getWeb3Provider } from "@iexec/dataprotector";
-import {
-  IExecWeb3telegram,
-  getWeb3Provider as getWeb3ProviderWeb3mail,
-} from "@iexec/web3telegram";
+import { IExecWeb3telegram } from "@iexec/web3telegram";
+import { IExecWeb3mail } from "@iexec/web3mail";
 import { IExec } from "iexec";
 import dotenv from "dotenv";
 import chalk from "chalk";
@@ -22,7 +20,9 @@ const authorizedUser =
 const authorizedAppTelegram =
   process.env.AUTHORIZED_APP_TELEGRAM ||
   "0x53AFc09a647e7D5Fa9BDC784Eb3623385C45eF89"; // Web3Telegram application address
-const authorizedAppMail = process.env.AUTHORIZED_APP_MAIL || ""; // Web3Mail application address
+const authorizedAppMail =
+  process.env.AUTHORIZED_APP_MAIL ||
+  "0xD5054a18565c4a9E5c1aa3cEB53258bd59d4c78C"; // Web3Mail application address
 
 // Common utility functions
 const validatePrivateKey = () => {
@@ -53,13 +53,24 @@ const initializeDataProtector = () => {
 
 const initializeWeb3Telegram = () => {
   validatePrivateKey();
-  const ethProviderWeb3telegram = getWeb3ProviderWeb3mail(privateKey!, {
+  const ethProviderWeb3telegram = getWeb3Provider(privateKey!, {
     host: 42161, // Arbitrum mainnet
   });
   const web3telegram = new IExecWeb3telegram(ethProviderWeb3telegram, {
     dappWhitelistAddress: authorizedAppTelegram,
   });
   return web3telegram;
+};
+
+const initializeWeb3Mail = () => {
+  validatePrivateKey();
+  const ethProviderWeb3mail = getWeb3Provider(privateKey!, {
+    host: 42161, // Arbitrum mainnet
+  });
+  const web3mail = new IExecWeb3mail(ethProviderWeb3mail, {
+    dappWhitelistAddress: authorizedAppMail,
+  });
+  return web3mail;
 };
 
 const formatBalance = (balance: any) => {
@@ -122,11 +133,19 @@ program
   .version("1.0.0");
 
 program
-  .command("subscribe-tg")
+  .command("subscribe")
   .description(
-    "Subscribe to Web3Telegram by protecting data and granting access"
+    "Subscribe to Web3Telegram or Web3Mail by protecting data and granting access"
   )
-  .option("-c, --chat-id <chatId>", "Telegram chat ID to protect")
+  .option(
+    "-s, --service <service>",
+    "Service to subscribe to (telegram or mail)"
+  )
+  .option(
+    "-c, --chat-id <chatId>",
+    "Telegram chat ID to protect (for telegram service)"
+  )
+  .option("-e, --email <email>", "Email address to protect (for mail service)")
   .option("-p, --price <price>", "Price per access in RLC (default: 0)", "0")
   .option(
     "-n, --access-count <count>",
@@ -135,47 +154,121 @@ program
   )
   .action(async (options) => {
     try {
-      // Get required parameters from options or prompt
-      if (!options.chatId) {
-        console.log(
-          chalk.yellow.bold(
-            "\n📱 No chat ID provided. Follow these steps to get your Telegram chat ID:\n"
-          )
-        );
-        console.log(
-          chalk.cyan(
-            "1. Open Telegram and start a conversation with @IExecWeb3TelegramBot"
-          )
-        );
-        console.log(chalk.cyan("   🔗 https://t.me/IExecWeb3TelegramBot"));
-        console.log(chalk.cyan("2. Send any message to the bot"));
-        console.log(
-          chalk.cyan("3. The bot will reply with your unique chat ID")
-        );
-        console.log(chalk.cyan("4. Copy that chat ID and paste it below\n"));
+      // Service selection
+      let selectedService = options.service;
+      if (!selectedService) {
+        const serviceAnswer = await inquirer.prompt([
+          {
+            type: "list",
+            name: "service",
+            message: "Which service would you like to subscribe to?",
+            choices: [
+              { name: "📱 Web3Telegram", value: "telegram" },
+              { name: "📧 Web3Mail", value: "mail" },
+            ],
+          },
+        ]);
+        selectedService = serviceAnswer.service;
       }
 
-      const answers = await inquirer.prompt([
-        {
-          type: "input",
-          name: "chatId",
-          message: "Enter Telegram chat ID:",
-          when: !options.chatId,
-          validate: (input: string) => {
-            if (input.trim().length === 0) {
-              return "Please enter a valid chat ID";
-            }
-            return true;
-          },
-        },
-      ]);
+      // Validate service selection
+      if (!["telegram", "mail"].includes(selectedService)) {
+        throw new Error("Invalid service. Please choose 'telegram' or 'mail'");
+      }
 
-      const chatId = options.chatId || answers.chatId;
+      let protectedDataInput: string;
+      let serviceName: string;
+      let appAddress: string;
+      let dataName: string;
+      let dataKey: string;
+
+      if (selectedService === "telegram") {
+        serviceName = "Web3Telegram";
+        appAddress = authorizedAppTelegram;
+        dataName = "web3telegram data";
+        dataKey = "telegram_chatId";
+
+        // Get Telegram chat ID
+        if (!options.chatId) {
+          console.log(
+            chalk.yellow.bold(
+              "\n📱 No chat ID provided. Follow these steps to get your Telegram chat ID:\n"
+            )
+          );
+          console.log(
+            chalk.cyan(
+              "1. Open Telegram and start a conversation with @IExecWeb3TelegramBot"
+            )
+          );
+          console.log(chalk.cyan("   🔗 https://t.me/IExecWeb3TelegramBot"));
+          console.log(chalk.cyan("2. Send any message to the bot"));
+          console.log(
+            chalk.cyan("3. The bot will reply with your unique chat ID")
+          );
+          console.log(chalk.cyan("4. Copy that chat ID and paste it below\n"));
+        }
+
+        const telegramAnswer = await inquirer.prompt([
+          {
+            type: "input",
+            name: "chatId",
+            message: "Enter Telegram chat ID:",
+            when: !options.chatId,
+            validate: (input: string) => {
+              if (input.trim().length === 0) {
+                return "Please enter a valid chat ID";
+              }
+              return true;
+            },
+          },
+        ]);
+
+        protectedDataInput = options.chatId || telegramAnswer.chatId;
+      } else {
+        serviceName = "Web3Mail";
+        appAddress = authorizedAppMail;
+        dataName = "web3mail data";
+        dataKey = "email";
+
+        // Get email address
+        if (!options.email) {
+          console.log(
+            chalk.yellow.bold(
+              "\n📧 No email provided. Please enter your email address:\n"
+            )
+          );
+        }
+
+        const emailAnswer = await inquirer.prompt([
+          {
+            type: "input",
+            name: "email",
+            message: "Enter email address:",
+            when: !options.email,
+            validate: (input: string) => {
+              if (input.trim().length === 0) {
+                return "Please enter a valid email address";
+              }
+              // Basic email validation
+              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+              if (!emailRegex.test(input.trim())) {
+                return "Please enter a valid email address format";
+              }
+              return true;
+            },
+          },
+        ]);
+
+        protectedDataInput = options.email || emailAnswer.email;
+      }
+
       const pricePerAccess = parseFloat(options.price);
       const numberOfAccess = parseInt(options.accessCount);
 
       console.log(
-        chalk.cyan.bold("\n🚀 Starting Web3Telegram subscription process...\n")
+        chalk.cyan.bold(
+          `\n🚀 Starting ${serviceName} subscription process...\n`
+        )
       );
 
       // --- STEP 1: Data configuration and protection ---
@@ -183,11 +276,11 @@ program
 
       const dataProtector = initializeDataProtector();
 
-      // Protect the data (Telegram chat ID)
+      // Protect the data
       const protectedData = await dataProtector.protectData({
-        name: "web3telegram data",
+        name: dataName,
         data: {
-          telegram_chatId: chatId,
+          [dataKey]: protectedDataInput,
         },
       });
 
@@ -197,15 +290,21 @@ program
           `   Protected data address: ${chalk.cyan(protectedData.address)}`
         )
       );
-      console.log(chalk.gray(`   Chat ID: ${chalk.cyan(chatId)}\n`));
+      console.log(
+        chalk.gray(
+          `   ${
+            dataKey === "telegram_chatId" ? "Chat ID" : "Email"
+          }: ${chalk.cyan(protectedDataInput)}\n`
+        )
+      );
 
       // --- STEP 2: Access authorization ---
       console.log(chalk.yellow.bold("🔐 Step 2: Granting access..."));
 
-      // Grant access to the Web3Telegram application and authorized user
+      // Grant access to the application and authorized user
       await dataProtector.grantAccess({
         protectedData: protectedData.address,
-        authorizedApp: authorizedAppTelegram,
+        authorizedApp: appAddress,
         authorizedUser,
         pricePerAccess,
         numberOfAccess,
@@ -221,14 +320,14 @@ program
       console.log(
         chalk.gray(`   Number of access: ${chalk.cyan(numberOfAccess)}`)
       );
-      console.log(
-        chalk.gray(`   App address: ${chalk.cyan(authorizedAppTelegram)}\n`)
-      );
+      console.log(chalk.gray(`   App address: ${chalk.cyan(appAddress)}\n`));
 
       console.log(chalk.green.bold("🎉 Subscription completed successfully!"));
       console.log(
         chalk.blue(
-          "   You can now send messages via Web3Telegram using this protected data."
+          `   You can now send ${
+            dataKey === "telegram_chatId" ? "messages" : "emails"
+          } via ${serviceName} using this protected data.`
         )
       );
     } catch (error) {
@@ -237,8 +336,12 @@ program
   });
 
 program
-  .command("send-test-tg")
-  .description("Send a test Telegram message via Web3Telegram")
+  .command("send-test")
+  .description("Send a test message via Web3Telegram or Web3Mail")
+  .option(
+    "-s, --service <service>",
+    "Service to send test message via (telegram or mail)"
+  )
   .option(
     "-p, --max-price <price>",
     "Maximum price in nRLC (default: 0.1)",
@@ -246,23 +349,68 @@ program
   )
   .action(async (options) => {
     try {
-      // Generate hardcoded test message with current UTC time
+      // Service selection
+      let selectedService = options.service;
+      if (!selectedService) {
+        const serviceAnswer = await inquirer.prompt([
+          {
+            type: "list",
+            name: "service",
+            message: "Which service would you like to send a test message via?",
+            choices: [
+              { name: "📱 Web3Telegram", value: "telegram" },
+              { name: "📧 Web3Mail", value: "mail" },
+            ],
+          },
+        ]);
+        selectedService = serviceAnswer.service;
+      }
+
+      // Validate service selection
+      if (!["telegram", "mail"].includes(selectedService)) {
+        throw new Error("Invalid service. Please choose 'telegram' or 'mail'");
+      }
+
       const currentTime = new Date().toISOString();
-      const message = `RandomApe says hi! (${currentTime})`;
       const maxPrice = parseFloat(options.maxPrice);
 
+      let serviceName: string;
+      let content: any;
+      let web3Client: IExecWeb3mail | IExecWeb3telegram;
+
+      if (selectedService === "telegram") {
+        serviceName = "Web3Telegram";
+        content = `RandomApe says hi! (${currentTime})`;
+        web3Client = initializeWeb3Telegram();
+      } else {
+        serviceName = "Web3Mail";
+        content = {
+          subject: `Test Email from RandomApe (${currentTime})`,
+          content: `Hello from RandomApe!\n\nThis is a test email sent via Web3Mail.\n\nTimestamp: ${currentTime}\n\nBest regards,\nRandomApe`,
+        };
+        web3Client = initializeWeb3Mail();
+      }
+
       console.log(
-        chalk.cyan.bold("\n🚀 Starting Web3Telegram test message process...\n")
+        chalk.cyan.bold(
+          `\n🚀 Starting ${serviceName} test ${
+            selectedService === "telegram" ? "message" : "email"
+          } process...\n`
+        )
       );
 
-      // --- STEP 3: Initialization and sending the message via Web3Telegram ---
-      console.log(chalk.yellow.bold("📤 Step 3: Sending test message..."));
-
-      const web3telegram = initializeWeb3Telegram();
+      // --- STEP 3: Initialization and sending via selected service ---
+      console.log(
+        chalk.yellow.bold(
+          `📤 Step 3: Sending test ${
+            selectedService === "telegram" ? "message" : "email"
+          }...`
+        )
+      );
 
       // Fetch contacts (protected data to which you have access)
       console.log(chalk.blue("🔍 Fetching your contacts..."));
-      const contacts = await web3telegram.fetchMyContacts({
+      const contacts = await web3Client.fetchMyContacts({
         isUserStrict: true,
       });
 
@@ -279,42 +427,212 @@ program
 
       // Display all contacts
       console.log(chalk.gray("\n   Available contacts:"));
-      contacts.forEach((contact, index) => {
+      contacts.forEach((contact: any, index: number) => {
         console.log(
           chalk.gray(`   ${index + 1}. ${chalk.cyan(contact.address)}`)
         );
       });
 
       console.log(
-        chalk.gray(`\n   Using contact: ${chalk.cyan(contacts[0].address)}\n`)
+        chalk.gray(
+          `\n   Sending to ${chalk.cyan(contacts.length)} contact(s)...\n`
+        )
       );
 
-      // Send the Telegram message using the protected data address of the first contact
-      console.log(chalk.blue("📨 Sending message via Web3Telegram..."));
-      const telegramResult = await web3telegram.sendTelegram({
-        telegramContent: message,
-        protectedData: contacts[0].address,
-        senderName: "RandomApe",
-        workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
-        // useVoucher: true,
-        // workerpoolAddressOrEns: "0x2C06263943180Cc024dAFfeEe15612DB6e5fD248",
-      });
+      // Start timer
+      const startTime = Date.now();
 
-      console.log(chalk.green.bold("✅ Test message sent successfully!"));
-      console.log(chalk.gray(`   Message: ${chalk.cyan(message)}`));
+      // Send the message/email to all contacts
+      const results: any[] = [];
+      let successCount = 0;
+      let errorCount = 0;
+      const sendTimes: number[] = [];
+
+      // Send messages sequentially (one at a time)
+      for (let i = 0; i < contacts.length; i++) {
+        const contact = contacts[i];
+        const sendStartTime = Date.now();
+        
+        try {
+          console.log(
+            chalk.blue(
+              `📤 Submitting to contact ${i + 1}/${contacts.length}: ${chalk.cyan(
+                contact.address
+              )}`
+            )
+          );
+
+          let result: any;
+          if (selectedService === "telegram") {
+            result = await (web3Client as IExecWeb3telegram).sendTelegram({
+              telegramContent: content,
+              protectedData: contact.address,
+              senderName: "RandomApe",
+              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+            });
+          } else {
+            result = await (web3Client as IExecWeb3mail).sendEmail({
+              emailSubject: content.subject,
+              emailContent: content.content,
+              protectedData: contact.address,
+              contentType: "text/plain", // text/html is also supported
+              senderName: "RandomApe",
+              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+            });
+          }
+
+          const sendEndTime = Date.now();
+          const sendDuration = sendEndTime - sendStartTime;
+          const sendDurationSeconds = (sendDuration / 1000).toFixed(2);
+          sendTimes.push(sendDuration);
+
+          results.push({
+            contact: contact.address,
+            taskId: result.taskId,
+            success: true,
+            error: null,
+            sendTime: sendDuration,
+          });
+          successCount++;
+
+          console.log(
+            chalk.green(
+              `   ✅ Submitted successfully! Task ID: ${chalk.cyan(
+                result.taskId
+              )} (${sendDurationSeconds}s)`
+            )
+          );
+        } catch (error) {
+          const sendEndTime = Date.now();
+          const sendDuration = sendEndTime - sendStartTime;
+          sendTimes.push(sendDuration);
+
+          console.log(
+            chalk.red(
+              `   ❌ Failed to submit to ${contact.address} (${(
+                sendDuration / 1000
+              ).toFixed(2)}s)`
+            )
+          );
+          if (error instanceof Error) {
+            console.log(chalk.red(`   Error: ${error.message}`));
+          }
+
+          results.push({
+            contact: contact.address,
+            taskId: null,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            sendTime: sendDuration,
+          });
+          errorCount++;
+        }
+      }
+
+      // Calculate elapsed time and timing statistics
+      const endTime = Date.now();
+      const elapsedTime = endTime - startTime;
+      const elapsedSeconds = (elapsedTime / 1000).toFixed(2);
+
+      // Calculate timing statistics
+      const avgSendTime =
+        sendTimes.length > 0
+          ? sendTimes.reduce((a, b) => a + b, 0) / sendTimes.length
+          : 0;
+      const minSendTime = sendTimes.length > 0 ? Math.min(...sendTimes) : 0;
+      const maxSendTime = sendTimes.length > 0 ? Math.max(...sendTimes) : 0;
+      const avgSendTimeSeconds = (avgSendTime / 1000).toFixed(2);
+      const minSendTimeSeconds = (minSendTime / 1000).toFixed(2);
+      const maxSendTimeSeconds = (maxSendTime / 1000).toFixed(2);
+
+      // Summary of results
       console.log(
-        chalk.gray(`   Task ID: ${chalk.cyan(telegramResult.taskId)}`)
+        chalk.green.bold(
+          `\n✅ Test ${
+            selectedService === "telegram" ? "messages" : "emails"
+          } submission completed!`
+        )
       );
-      console.log(chalk.gray(`   Max price paid: ${chalk.cyan(maxPrice)} RLC`));
       console.log(
-        chalk.gray(`   Protected data: ${chalk.cyan(contacts[0].address)}\n`)
+        chalk.gray(`   Total contacts: ${chalk.cyan(contacts.length)}`)
+      );
+      console.log(
+        chalk.green(`   Successful submissions: ${chalk.cyan(successCount)}`)
+      );
+      if (errorCount > 0) {
+        console.log(chalk.red(`   Failed submissions: ${chalk.cyan(errorCount)}`));
+      }
+      console.log(
+        chalk.gray(
+          `   Total submission time: ${chalk.cyan(elapsedSeconds)} seconds`
+        )
+      );
+      console.log(
+        chalk.gray(
+          `   Average submission time: ${chalk.cyan(avgSendTimeSeconds)} seconds`
+        )
+      );
+      console.log(
+        chalk.gray(`   Fastest submission: ${chalk.cyan(minSendTimeSeconds)} seconds`)
+      );
+      console.log(
+        chalk.gray(`   Slowest submission: ${chalk.cyan(maxSendTimeSeconds)} seconds`)
       );
 
+      if (selectedService === "telegram") {
+        console.log(chalk.gray(`   Message: ${chalk.cyan(content)}`));
+      } else {
+        console.log(chalk.gray(`   Subject: ${chalk.cyan(content.subject)}`));
+        console.log(chalk.gray(`   Content: ${chalk.cyan(content.content)}`));
+      }
       console.log(
-        chalk.green.bold("🎉 Web3Telegram test completed successfully!")
+        chalk.gray(`   Max price per send: ${chalk.cyan(maxPrice)} RLC`)
       );
+
+      // Show detailed results
+      if (successCount > 0) {
+        console.log(chalk.gray(`\n   📋 Successful submissions:`));
+        results
+          .filter((r) => r.success)
+          .forEach((result, index) => {
+            const sendTimeSeconds = (result.sendTime / 1000).toFixed(2);
+            console.log(
+              chalk.gray(
+                `   ${index + 1}. ${chalk.cyan(
+                  result.contact
+                )} - Task ID: ${chalk.cyan(
+                  result.taskId
+                )} (${sendTimeSeconds}s)`
+              )
+            );
+          });
+      }
+
+      if (errorCount > 0) {
+        console.log(chalk.gray(`\n   ❌ Failed submissions:`));
+        results
+          .filter((r) => !r.success)
+          .forEach((result, index) => {
+            const sendTimeSeconds = (result.sendTime / 1000).toFixed(2);
+            console.log(
+              chalk.gray(
+                `   ${index + 1}. ${chalk.cyan(
+                  result.contact
+                )} - Error: ${chalk.red(result.error)} (${sendTimeSeconds}s)`
+              )
+            );
+          });
+      }
+
+      console.log(chalk.green.bold(`\n🎉 ${serviceName} test submissions completed!`));
       console.log(
-        chalk.blue("   Check your Telegram to see the message delivered!")
+        chalk.blue(
+          `   Messages submitted to blockchain. Check your ${
+            selectedService === "telegram" ? "Telegram" : "email"
+          } in a few minutes to see the ${
+            selectedService === "telegram" ? "messages" : "emails"
+          } delivered!`
+        )
       );
     } catch (error) {
       handleError(error, "test message");
