@@ -281,6 +281,7 @@ program
         name: dataName,
         data: {
           [dataKey]: protectedDataInput,
+          apebonddata: "apebond",
         },
       });
 
