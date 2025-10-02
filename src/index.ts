@@ -16,7 +16,7 @@ dotenv.config();
 // * and transactions would be paid directly by the user's wallet, not via a stored private key
 const privateKey = process.env.PRIVATE_KEY;
 const authorizedUser =
-  process.env.AUTHORIZED_USER || "0x346BF25831698B27046F59210505F70F5391A197";
+  process.env.AUTHORIZED_USER || "0x9e6AFcB1462997c867F5755d4E533E8917d347Af";
 const authorizedAppTelegram =
   process.env.AUTHORIZED_APP_TELEGRAM ||
   "0x53AFc09a647e7D5Fa9BDC784Eb3623385C45eF89"; // Web3Telegram application address
