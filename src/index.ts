@@ -448,85 +448,161 @@ program
       let errorCount = 0;
       const sendTimes: number[] = [];
 
-      // Send messages sequentially (one at a time)
-      for (let i = 0; i < contacts.length; i++) {
-        const contact = contacts[i];
+      // Create timeout promise (1 minute)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout after 60 seconds")), 60000);
+      });
+
+      // Send all messages in parallel (fire-and-forget with timeout)
+      const sendPromises = contacts.map((contact, index) => {
         const sendStartTime = Date.now();
-        
-        try {
-          console.log(
-            chalk.blue(
-              `📤 Submitting to contact ${i + 1}/${contacts.length}: ${chalk.cyan(
-                contact.address
-              )}`
-            )
-          );
 
-          let result: any;
-          if (selectedService === "telegram") {
-            result = await (web3Client as IExecWeb3telegram).sendTelegram({
-              telegramContent: content,
-              protectedData: contact.address,
-              senderName: "RandomApe",
-              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
-            });
+        console.log(
+          chalk.blue(
+            `📤 Submitting to contact ${index + 1}/${
+              contacts.length
+            }: ${chalk.cyan(contact.address)}`
+          )
+        );
+
+        // Create the send promise without awaiting it
+        const sendPromise = (async () => {
+          try {
+            let result: any;
+            if (selectedService === "telegram") {
+              result = await (web3Client as IExecWeb3telegram).sendTelegram({
+                telegramContent: content,
+                protectedData: contact.address,
+                senderName: "RandomApe",
+                workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+              });
+            } else {
+              result = await (web3Client as IExecWeb3mail).sendEmail({
+                emailSubject: content.subject,
+                emailContent: content.content,
+                protectedData: contact.address,
+                contentType: "text/plain", // text/html is also supported
+                senderName: "RandomApe",
+                workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+              });
+            }
+
+            const sendEndTime = Date.now();
+            const sendDuration = sendEndTime - sendStartTime;
+            const sendDurationSeconds = (sendDuration / 1000).toFixed(2);
+            sendTimes.push(sendDuration);
+
+            console.log(
+              chalk.green(
+                `   ✅ Submitted successfully! Task ID: ${chalk.cyan(
+                  result.taskId
+                )} (${sendDurationSeconds}s)`
+              )
+            );
+
+            return {
+              contact: contact.address,
+              taskId: result.taskId,
+              success: true,
+              error: null,
+              sendTime: sendDuration,
+            };
+          } catch (error) {
+            const sendEndTime = Date.now();
+            const sendDuration = sendEndTime - sendStartTime;
+            sendTimes.push(sendDuration);
+
+            console.log(
+              chalk.red(
+                `   ❌ Failed to submit to ${contact.address} (${(
+                  sendDuration / 1000
+                ).toFixed(2)}s)`
+              )
+            );
+            if ((error as any).cause) {
+              console.log(chalk.red(`   Cause: ${(error as any).cause}`));
+            }
+            if (error instanceof Error) {
+              console.log(chalk.red(`   Error: ${error.message}`));
+            }
+
+            return {
+              contact: contact.address,
+              taskId: null,
+              success: false,
+              error: (error as any).cause
+                ? `Cause: ${(error as any).cause} Error: ${
+                    (error as any).message
+                  }`
+                : error instanceof Error
+                ? error.message
+                : String(error),
+              sendTime: sendDuration,
+            };
+          }
+        })();
+
+        // Return the send promise
+        return sendPromise;
+      });
+
+      // Race between all submissions and timeout
+      try {
+        const sendResults = (await Promise.race([
+          Promise.allSettled(sendPromises),
+          timeoutPromise,
+        ])) as PromiseSettledResult<any>[];
+
+        // Process results from Promise.allSettled
+        sendResults.forEach((result) => {
+          if (result.status === "fulfilled") {
+            results.push(result.value);
+            if (result.value.success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
           } else {
-            result = await (web3Client as IExecWeb3mail).sendEmail({
-              emailSubject: content.subject,
-              emailContent: content.content,
-              protectedData: contact.address,
-              contentType: "text/plain", // text/html is also supported
-              senderName: "RandomApe",
-              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+            // This shouldn't happen with allSettled, but handle it just in case
+            errorCount++;
+            results.push({
+              contact: "unknown",
+              taskId: null,
+              success: false,
+              error: result.reason?.message || "Unknown error",
+              sendTime: 0,
             });
           }
+        });
+      } catch (timeoutError) {
+        // Timeout occurred - handle partial results
+        console.log(
+          chalk.yellow(
+            `\n⚠️  Timeout after 60 seconds. Some submissions may still be in progress.`
+          )
+        );
 
-          const sendEndTime = Date.now();
-          const sendDuration = sendEndTime - sendStartTime;
-          const sendDurationSeconds = (sendDuration / 1000).toFixed(2);
-          sendTimes.push(sendDuration);
-
-          results.push({
-            contact: contact.address,
-            taskId: result.taskId,
-            success: true,
-            error: null,
-            sendTime: sendDuration,
-          });
-          successCount++;
-
-          console.log(
-            chalk.green(
-              `   ✅ Submitted successfully! Task ID: ${chalk.cyan(
-                result.taskId
-              )} (${sendDurationSeconds}s)`
-            )
-          );
-        } catch (error) {
-          const sendEndTime = Date.now();
-          const sendDuration = sendEndTime - sendStartTime;
-          sendTimes.push(sendDuration);
-
-          console.log(
-            chalk.red(
-              `   ❌ Failed to submit to ${contact.address} (${(
-                sendDuration / 1000
-              ).toFixed(2)}s)`
-            )
-          );
-          if (error instanceof Error) {
-            console.log(chalk.red(`   Error: ${error.message}`));
+        // Try to get any results that completed before timeout
+        const settledResults = await Promise.allSettled(sendPromises);
+        settledResults.forEach((result: any) => {
+          if (result.status === "fulfilled") {
+            results.push(result.value);
+            if (result.value.success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } else {
+            errorCount++;
+            results.push({
+              contact: "unknown",
+              taskId: null,
+              success: false,
+              error: "Timeout - submission may still be in progress",
+              sendTime: 60000, // 60 seconds
+            });
           }
-
-          results.push({
-            contact: contact.address,
-            taskId: null,
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-            sendTime: sendDuration,
-          });
-          errorCount++;
-        }
+        });
       }
 
       // Calculate elapsed time and timing statistics
@@ -560,7 +636,9 @@ program
         chalk.green(`   Successful submissions: ${chalk.cyan(successCount)}`)
       );
       if (errorCount > 0) {
-        console.log(chalk.red(`   Failed submissions: ${chalk.cyan(errorCount)}`));
+        console.log(
+          chalk.red(`   Failed submissions: ${chalk.cyan(errorCount)}`)
+        );
       }
       console.log(
         chalk.gray(
@@ -569,14 +647,20 @@ program
       );
       console.log(
         chalk.gray(
-          `   Average submission time: ${chalk.cyan(avgSendTimeSeconds)} seconds`
+          `   Average submission time: ${chalk.cyan(
+            avgSendTimeSeconds
+          )} seconds`
         )
       );
       console.log(
-        chalk.gray(`   Fastest submission: ${chalk.cyan(minSendTimeSeconds)} seconds`)
+        chalk.gray(
+          `   Fastest submission: ${chalk.cyan(minSendTimeSeconds)} seconds`
+        )
       );
       console.log(
-        chalk.gray(`   Slowest submission: ${chalk.cyan(maxSendTimeSeconds)} seconds`)
+        chalk.gray(
+          `   Slowest submission: ${chalk.cyan(maxSendTimeSeconds)} seconds`
+        )
       );
 
       if (selectedService === "telegram") {
@@ -624,7 +708,9 @@ program
           });
       }
 
-      console.log(chalk.green.bold(`\n🎉 ${serviceName} test submissions completed!`));
+      console.log(
+        chalk.green.bold(`\n🎉 ${serviceName} test submissions completed!`)
+      );
       console.log(
         chalk.blue(
           `   Messages submitted to blockchain. Check your ${

@@ -138,21 +138,22 @@ yarn start send-test --service telegram --max-price 0.2
 
 **Bulk Sending:**
 
-- Sends to **all available contacts** you have access to **sequentially**
+- Sends to **all available contacts** you have access to **in parallel**
 - Shows real-time progress for each contact (e.g., "Submitting to contact 1/3")
 - Provides detailed summary with success/failure counts
 - Lists all successful submissions with their Task IDs
 - Shows any failed submissions with error messages
+- **60-second timeout protection** prevents hanging on slow submissions
 - Tracks total elapsed time for the entire submission process
-- **Sequential processing** - each submission completes before the next begins
+- **Fire-and-forget approach** - submissions happen immediately without waiting for blockchain confirmation
 
 **Performance Features:**
 
-- **Sequential Processing**: Each contact processed one at a time for maximum reliability
-- **Reliable Execution**: Each submission completes fully before the next begins
-- **Consistent Timing**: Predictable execution time based on individual submission times
-- **Error Isolation**: Failures in one submission don't affect others
-- **Easy Debugging**: Clear order of operations for troubleshooting
+- **Parallel Processing**: All contacts processed simultaneously instead of sequentially
+- **Fire-and-Forget**: Immediate submission without waiting for blockchain confirmation
+- **Timeout Protection**: 60-second maximum wait prevents hanging on slow submissions
+- **Fast Execution**: Typical completion in 2-10 seconds instead of minutes
+- **Scalable**: Performance doesn't degrade with more contacts
 
 **Prerequisites:** You must run the `subscribe` command first to protect your data and grant access.
 
@@ -250,21 +251,22 @@ The send test command implements a unified test message flow for both Web3Telegr
 - Prompts user to choose between Web3Telegram or Web3Mail
 - Validates service selection and configures appropriate client
 
-### Step 3: Sequential Bulk Message/Email Sending
+### Step 3: Parallel Bulk Message/Email Sending
 
 - Initializes the selected service (Web3Telegram or Web3Mail) with your private key
 - Fetches your available contacts (protected data you have access to)
-- **Submits test messages/emails to all available contacts sequentially**:
+- **Submits test messages/emails to all available contacts in parallel**:
   - **Telegram**: Submits "RandomApe says hi!" with timestamp to each contact
   - **Mail**: Submits email with subject and formatted content to each contact
-- **Sequential processing**: Each submission completes before the next begins
+- **Fire-and-forget approach**: Submissions happen immediately without waiting for blockchain confirmation
 - Shows real-time progress for each contact submission
+- **60-second timeout protection**: Prevents hanging on slow network conditions
 - Handles errors gracefully for individual contacts
 - Returns task IDs for tracking all submissions (not deliveries)
 - Provides comprehensive summary with success/failure statistics
 - Displays pricing and transaction details for all submissions
 - Tracks and reports total elapsed time for performance monitoring
-- **Reliable execution**: No race conditions or parallel processing conflicts
+- **Parallel execution**: All contacts processed simultaneously for maximum speed
 
 ### Deposit Command
 
