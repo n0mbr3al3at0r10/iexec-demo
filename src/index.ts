@@ -275,6 +275,17 @@ program
       console.log(chalk.yellow.bold("📝 Step 1: Protecting data..."));
 
       const dataProtector = initializeDataProtector();
+      const alreadyProtectedData = await dataProtector.getProtectedData({
+        owner: authorizedUser,
+        requiredSchema: {
+          [dataKey]: "string",
+          apebonddata: "string",
+        },
+      });
+      if (alreadyProtectedData.length > 0) {
+        console.log(chalk.green.bold(`✅ Data already protected!`));
+        return;
+      }
 
       // Protect the data
       const protectedData = await dataProtector.protectData({
@@ -453,13 +464,13 @@ program
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
         const sendStartTime = Date.now();
-        
+
         try {
           console.log(
             chalk.blue(
-              `📤 Submitting to contact ${i + 1}/${contacts.length}: ${chalk.cyan(
-                contact.address
-              )}`
+              `📤 Submitting to contact ${i + 1}/${
+                contacts.length
+              }: ${chalk.cyan(contact.address)}`
             )
           );
 
@@ -561,7 +572,9 @@ program
         chalk.green(`   Successful submissions: ${chalk.cyan(successCount)}`)
       );
       if (errorCount > 0) {
-        console.log(chalk.red(`   Failed submissions: ${chalk.cyan(errorCount)}`));
+        console.log(
+          chalk.red(`   Failed submissions: ${chalk.cyan(errorCount)}`)
+        );
       }
       console.log(
         chalk.gray(
@@ -570,14 +583,20 @@ program
       );
       console.log(
         chalk.gray(
-          `   Average submission time: ${chalk.cyan(avgSendTimeSeconds)} seconds`
+          `   Average submission time: ${chalk.cyan(
+            avgSendTimeSeconds
+          )} seconds`
         )
       );
       console.log(
-        chalk.gray(`   Fastest submission: ${chalk.cyan(minSendTimeSeconds)} seconds`)
+        chalk.gray(
+          `   Fastest submission: ${chalk.cyan(minSendTimeSeconds)} seconds`
+        )
       );
       console.log(
-        chalk.gray(`   Slowest submission: ${chalk.cyan(maxSendTimeSeconds)} seconds`)
+        chalk.gray(
+          `   Slowest submission: ${chalk.cyan(maxSendTimeSeconds)} seconds`
+        )
       );
 
       if (selectedService === "telegram") {
@@ -625,7 +644,9 @@ program
           });
       }
 
-      console.log(chalk.green.bold(`\n🎉 ${serviceName} test submissions completed!`));
+      console.log(
+        chalk.green.bold(`\n🎉 ${serviceName} test submissions completed!`)
+      );
       console.log(
         chalk.blue(
           `   Messages submitted to blockchain. Check your ${
