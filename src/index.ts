@@ -38,8 +38,8 @@ const validatePrivateKey = (privateKey: string) => {
 };
 
 const initializeIExec = () => {
-  validatePrivateKey(userPrivateKey!);
-  const ethProvider = getWeb3Provider(userPrivateKey!, {
+  validatePrivateKey(privateKey!);
+  const ethProvider = getWeb3Provider(privateKey!, {
     host: 42161, // Arbitrum mainnet
   });
   const iexec = new IExec({
@@ -775,12 +775,9 @@ program
 program
   .command("deposit")
   .description("Check account balance and deposit RLC in the iExec protocol")
-  .option("-a, --amount <amount>", "Amount of RLC to deposit (default: 1)")
+  .option("-a, --amount <amount>", "Amount of RLC to deposit")
   .action(async (options) => {
     try {
-      const depositAmount = parseFloat(options.amount || "1");
-      const depositAmountNano = Math.floor(depositAmount * 1_000_000_000); // Convert to nano RLC
-
       console.log(
         chalk.cyan.bold(
           "\n💰 Starting iExec account balance check and deposit...\n"
@@ -793,9 +790,45 @@ program
       console.log(chalk.yellow.bold("📊 Step 1: Checking account balance..."));
       console.log(chalk.gray(`   Account: ${chalk.cyan(accountAddress)}\n`));
 
-      // Check your balance
+      // Check your iExec account balance (staked/locked)
       const balance = await iexec.account.checkBalance(accountAddress);
       displayBalance(balance);
+
+      // Check wallet RLC balance
+      console.log(chalk.yellow.bold("💳 Step 1.1: Checking wallet RLC balance..."));
+      const walletBalances = await iexec.wallet.checkBalances(accountAddress);
+      const walletBalanceRLC = Number(walletBalances.nRLC) / 1_000_000_000;
+      console.log(chalk.green(`✅ Wallet RLC balance retrieved successfully!`));
+      console.log(chalk.gray(`   Wallet RLC balance: ${chalk.cyan(walletBalanceRLC.toFixed(9))} RLC`));
+      console.log(chalk.gray(`   Wallet RLC balance: ${chalk.cyan(walletBalances.nRLC.toString())} nano RLC\n`));
+
+      // Get deposit amount
+      let depositAmount: number;
+      if (options.amount) {
+        depositAmount = parseFloat(options.amount);
+      } else {
+        const amountAnswer = await inquirer.prompt([
+          {
+            type: "input",
+            name: "amount",
+            message: "Enter amount of RLC to deposit:",
+            default: "1",
+            validate: (input: string) => {
+              const amount = parseFloat(input);
+              if (isNaN(amount) || amount <= 0) {
+                return "Please enter a valid positive number";
+              }
+              if (amount > walletBalanceRLC) {
+                return `Insufficient wallet balance. Available: ${walletBalanceRLC.toFixed(9)} RLC`;
+              }
+              return true;
+            },
+          },
+        ]);
+        depositAmount = parseFloat(amountAnswer.amount);
+      }
+
+      const depositAmountNano = Math.floor(depositAmount * 1_000_000_000); // Convert to nano RLC
 
       // Ask for confirmation if depositing
       if (depositAmount > 0) {
@@ -816,7 +849,7 @@ program
             type: "confirm",
             name: "confirm",
             message: `Are you sure you want to deposit ${depositAmount} RLC?`,
-            default: false,
+            default: true,
           },
         ]);
 
@@ -890,7 +923,7 @@ program
         return;
       }
 
-      // Determine withdrawal amount
+      // Get withdrawal amount
       let withdrawAmount: number;
       let withdrawAmountNano: bigint;
 
@@ -908,9 +941,27 @@ program
           );
         }
       } else {
-        // Withdraw all available
-        withdrawAmountNano = BigInt(formatted.available);
-        withdrawAmount = formatted.availableRLC;
+        // Ask for withdrawal amount with max balance as default
+        const amountAnswer = await inquirer.prompt([
+          {
+            type: "input",
+            name: "amount",
+            message: "Enter amount of RLC to withdraw:",
+            default: formatted.availableRLC.toFixed(9),
+            validate: (input: string) => {
+              const amount = parseFloat(input);
+              if (isNaN(amount) || amount <= 0) {
+                return "Please enter a valid positive number";
+              }
+              if (amount > formatted.availableRLC) {
+                return `Insufficient balance. Available: ${formatted.availableRLC.toFixed(9)} RLC`;
+              }
+              return true;
+            },
+          },
+        ]);
+        withdrawAmount = parseFloat(amountAnswer.amount);
+        withdrawAmountNano = BigInt(Math.floor(withdrawAmount * 1_000_000_000));
       }
 
       console.log(
@@ -938,7 +989,7 @@ program
           message: `Are you sure you want to withdraw ${withdrawAmount.toFixed(
             9
           )} RLC?`,
-          default: false,
+          default: true,
         },
       ]);
 

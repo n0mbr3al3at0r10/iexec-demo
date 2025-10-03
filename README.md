@@ -200,31 +200,40 @@ yarn start send-test --service telegram --max-price 0.2
 yarn start deposit [options]
 ```
 
-Check your account balance and deposit RLC in the iExec protocol for running tasks.
+Check your account balance and deposit RLC in the iExec protocol for running tasks. The command now provides comprehensive balance information and interactive amount selection.
 
 **Options:**
 
-- `-a, --amount <amount>`: Amount of RLC to deposit (default: 1)
+- `-a, --amount <amount>`: Amount of RLC to deposit
+
+**Features:**
+
+- **Complete Balance Check**: Shows both iExec account balance (staked/locked) and wallet RLC balance
+- **Interactive Amount Selection**: If no amount is provided, prompts for deposit amount with 1 RLC as default
+- **Smart Validation**: Ensures sufficient wallet balance before allowing deposit
+- **User-Friendly Confirmation**: Confirmation prompt defaults to "yes" for quick approval
 
 **Examples:**
 
-Check balance only (no deposit):
-
-```bash
-yarn start deposit --amount 0
-```
-
-Deposit 1 RLC (default):
+Interactive mode (will prompt for amount, defaulting to 1 RLC):
 
 ```bash
 yarn start deposit
 ```
 
-Deposit custom amount:
+Deposit specific amount:
 
 ```bash
 yarn start deposit --amount 5
 ```
+
+**Process Flow:**
+
+1. **Step 1**: Check iExec account balance (staked/locked amounts)
+2. **Step 1.1**: Check wallet RLC balance (available for deposit)
+3. **Step 2**: Interactive amount selection (if not provided via command line)
+4. **Step 3**: Confirmation prompt (defaults to "yes")
+5. **Step 4**: Execute deposit and show updated balance
 
 #### Withdraw Command
 
@@ -232,15 +241,22 @@ yarn start deposit --amount 5
 yarn start withdraw [options]
 ```
 
-Check your account balance and withdraw RLC from the iExec protocol back to your wallet.
+Check your account balance and withdraw RLC from the iExec protocol back to your wallet. The command now provides interactive amount selection with smart defaults.
 
 **Options:**
 
-- `-a, --amount <amount>`: Amount of RLC to withdraw (default: all available)
+- `-a, --amount <amount>`: Amount of RLC to withdraw
+
+**Features:**
+
+- **Interactive Amount Selection**: If no amount is provided, prompts for withdrawal amount with maximum available balance as default
+- **Smart Validation**: Ensures the requested amount doesn't exceed available balance
+- **User-Friendly Confirmation**: Confirmation prompt defaults to "yes" for quick approval
+- **Flexible Withdrawal**: Supports partial or full withdrawal with intelligent defaults
 
 **Examples:**
 
-Check balance and withdraw all available RLC:
+Interactive mode (will prompt for amount, defaulting to maximum available):
 
 ```bash
 yarn start withdraw
@@ -251,6 +267,13 @@ Withdraw specific amount:
 ```bash
 yarn start withdraw --amount 2.5
 ```
+
+**Process Flow:**
+
+1. **Step 1**: Check iExec account balance (staked/locked amounts)
+2. **Step 2**: Interactive amount selection (if not provided via command line, defaults to max available)
+3. **Step 3**: Confirmation prompt (defaults to "yes")
+4. **Step 4**: Execute withdrawal and show updated balance
 
 ## What the Commands Do
 
@@ -338,30 +361,28 @@ The send test command implements a unified test message flow for both Web3Telegr
 
 ### Deposit Command
 
-The deposit command manages your iExec account balance:
+The deposit command manages your iExec account balance with enhanced user experience:
 
-### Account Management
+### Enhanced Account Management
 
-- Checks your current RLC balance (staked and locked amounts)
-- Calculates available balance for operations
-- Deposits RLC into your iExec account
-- Confirms deposit with updated balance check
-- Includes user confirmation before depositing funds
+- **Dual Balance Check**: Shows both iExec account balance (staked/locked) and wallet RLC balance
+- **Interactive Amount Selection**: Prompts for deposit amount when not provided, defaulting to 1 RLC
+- **Smart Validation**: Ensures sufficient wallet balance before allowing deposit
+- **User-Friendly Flow**: Confirmation prompt defaults to "yes" for quick approval
+- **Complete Process**: Deposits RLC and confirms with updated balance check
 
 ### Withdraw Command
 
-The withdraw command manages RLC withdrawal from your iExec account:
+The withdraw command manages RLC withdrawal from your iExec account with enhanced user experience:
 
-### Withdrawal Management
+### Enhanced Withdrawal Management
 
-- Checks your current RLC balance (staked and locked amounts)
-- Calculates available balance for withdrawal
-- Withdraws RLC from your iExec account back to your wallet
-- Supports partial or full withdrawal (default: all available)
-- Validates sufficient balance before withdrawal
-- Confirms withdrawal with updated balance check
-- Includes user confirmation before withdrawing funds
-- Handles edge cases (no available balance, insufficient funds)
+- **Interactive Amount Selection**: Prompts for withdrawal amount when not provided, defaulting to maximum available balance
+- **Smart Validation**: Ensures the requested amount doesn't exceed available balance
+- **User-Friendly Flow**: Confirmation prompt defaults to "yes" for quick approval
+- **Flexible Withdrawal**: Supports partial or full withdrawal with intelligent defaults
+- **Complete Process**: Withdraws RLC and confirms with updated balance check
+- **Edge Case Handling**: Properly handles no available balance and insufficient funds scenarios
 
 ## Development
 
