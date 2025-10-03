@@ -2,7 +2,11 @@
 
 import { Command } from "commander";
 import inquirer from "inquirer";
-import { IExecDataProtectorCore, getWeb3Provider } from "@iexec/dataprotector";
+import {
+  GrantedAccess,
+  IExecDataProtectorCore,
+  getWeb3Provider,
+} from "@iexec/dataprotector";
 import { IExecWeb3telegram } from "@iexec/web3telegram";
 import { IExecWeb3mail } from "@iexec/web3mail";
 import { IExec } from "iexec";
@@ -1050,7 +1054,7 @@ program
         );
 
         // Get all granted access for each protected data
-        let allGrantedAccess: any[] = [];
+        let allGrantedAccess: GrantedAccess[] = [];
         for (let i = 0; i < protectedDataList.length; i++) {
           const protectedData = protectedDataList[i];
           console.log(
@@ -1119,8 +1123,8 @@ program
 
         // Revoke access for each granted access entry
         for (let i = 0; i < allGrantedAccess.length; i++) {
-          const access = allGrantedAccess[i];
-          const dataset = access.dataset;
+          const grantedAccess = allGrantedAccess[i];
+          const dataset = grantedAccess.dataset; // aka protectedData address
 
           console.log(
             chalk.blue(
