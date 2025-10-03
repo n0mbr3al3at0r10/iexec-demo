@@ -4,7 +4,8 @@ A TypeScript CLI demo project that demonstrates Web3Telegram and Web3Mail integr
 
 ## Features
 
-- **Subscribe Command**: Unified subscription for Web3Telegram or Web3Mail with data protection and access authorization
+- **Subscribe Command**: Smart subscription for Web3Telegram or Web3Mail with intelligent protected data reuse
+- **Unsubscribe Command**: Revoke access from Web3Telegram or Web3Mail services
 - **Send Test Command**: Send test messages via Web3Telegram or Web3Mail
 - **Deposit Command**: Check account balance and deposit RLC in the iExec protocol
 - **Withdraw Command**: Check account balance and withdraw RLC from the iExec protocol
@@ -45,7 +46,7 @@ PRIVATE_KEY=your_private_key_here
 yarn start subscribe [options]
 ```
 
-Subscribe to Web3Telegram or Web3Mail by protecting data and granting access. The command will prompt you to choose between the two services.
+Smart subscription to Web3Telegram or Web3Mail with intelligent protected data management. The command checks for existing protected data and reuses them when possible, avoiding unnecessary resource creation.
 
 **Options:**
 
@@ -54,6 +55,11 @@ Subscribe to Web3Telegram or Web3Mail by protecting data and granting access. Th
 - `-e, --email <email>`: Email address to protect (for mail service)
 - `-p, --price <price>`: Price per access in RLC (default: 0)
 - `-n, --access-count <count>`: Number of access (default: unlimited)
+
+**Smart Logic:**
+- **Existing Access**: If already subscribed, reuses existing protected data
+- **No Access**: If protected data exists without access, grants access to it
+- **New Subscription**: Only creates new protected data when none exists
 
 **Examples:**
 
@@ -91,6 +97,38 @@ If you choose Telegram service and don't provide a chat ID, the CLI will show yo
 4. **Copy that chat ID** and paste it when prompted
 
 **Note:** The authorized user address is currently hardcoded to `0x346BF25831698B27046F59210505F70F5391A197`.
+
+#### Unsubscribe Command
+
+```bash
+yarn start unsubscribe [options]
+```
+
+Revoke access from Web3Telegram or Web3Mail services. The command finds all protected data owned by the user and revokes access to the selected service.
+
+**Options:**
+
+- `-s, --service <service>`: Service to unsubscribe from (telegram or mail)
+
+**Process:**
+1. **Find Protected Data**: Locates all protected data owned by the user with the correct schema
+2. **Check Access**: For each protected data, verifies if it has granted access to the service
+3. **Revoke Access**: Revokes all found granted access entries
+
+**Examples:**
+
+Interactive mode (will prompt for service selection):
+
+```bash
+yarn start unsubscribe
+```
+
+Unsubscribe from specific service:
+
+```bash
+yarn start unsubscribe -s telegram
+yarn start unsubscribe -s mail
+```
 
 #### Send Test Command
 
@@ -218,28 +256,60 @@ yarn start withdraw --amount 2.5
 
 ### Subscribe Command
 
-The subscribe command implements a unified subscription flow for both Web3Telegram and Web3Mail:
+The subscribe command implements a smart subscription flow with intelligent protected data management:
 
 ### Service Selection
 
 - Prompts user to choose between Web3Telegram or Web3Mail
 - Validates service selection and provides appropriate guidance
 
-### Step 1: Data Protection
+### Step 1: Smart Protected Data Management
 
-- Initializes an Ethereum provider using your private key
-- Creates a DataProtector instance
-- Protects your data on the blockchain:
-  - For Telegram: Chat ID data
-  - For Mail: Email address data
+- **Existing Data Discovery**: Finds all protected data owned by the user with the correct schema
+- **Access Verification**: For each protected data, checks if it already has granted access to the service
+- **Intelligent Decision Making**:
+  - **Already Subscribed**: If access exists, reuses existing protected data (no new creation)
+  - **No Access**: If protected data exists without access, grants access to it (reuses data)
+  - **New Subscription**: Only creates new protected data when none exists
 
-### Step 2: Access Authorization
+### Step 2: Conditional Access Authorization
 
+- **Smart Access Granting**: Only grants access when necessary (using conditional logic)
+- **Existing Access Detection**: If access already exists, skips the granting step
+- **Clear Feedback**: Provides detailed feedback about what action was taken
 - Grants access to the selected application:
   - Web3Telegram (`0x53AFc09a647e7D5Fa9BDC784Eb3623385C45eF89`)
   - Web3Mail (`0xD5054a18565c4a9E5c1aa3cEB53258bd59d4c78C`)
 - Authorizes a specific user address to send messages/emails
 - Sets pricing and access limits
+
+### Unsubscribe Command
+
+The unsubscribe command implements a comprehensive access revocation flow:
+
+### Service Selection
+
+- Prompts user to choose between Web3Telegram or Web3Mail
+- Validates service selection and configures appropriate app address
+
+### Step 1: Protected Data Discovery
+
+- **Find User's Protected Data**: Locates all protected data owned by the user with the correct schema (`telegram_chatId` or `email` + `apebonddata`)
+- **Service-Specific Search**: Searches for protected data matching the selected service type
+- **Comprehensive Coverage**: Ensures all relevant protected data is found
+
+### Step 2: Access Discovery
+
+- **Individual Access Check**: For each protected data found, calls `getGrantedAccess()` to find all granted access entries
+- **Service-Specific Filtering**: Only looks for access to the selected service (Web3Telegram or Web3Mail)
+- **Complete Collection**: Gathers all granted access entries from all protected data
+
+### Step 3: Access Revocation
+
+- **Bulk Revocation**: Revokes access for each found granted access entry
+- **Individual Processing**: Handles each revocation separately with proper error handling
+- **Progress Tracking**: Shows detailed progress for each revocation attempt
+- **Comprehensive Summary**: Provides final statistics on successful and failed revocations
 
 ### Send Test Command
 

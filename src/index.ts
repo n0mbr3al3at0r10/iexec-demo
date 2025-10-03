@@ -15,6 +15,8 @@ dotenv.config();
 // * Note: In a frontend implementation, users would connect their wallet via window.ethereum
 // * and transactions would be paid directly by the user's wallet, not via a stored private key
 const privateKey = process.env.PRIVATE_KEY;
+const userPrivateKey = process.env.USER_PRIVATE_KEY;
+const userAddress = process.env.USER_ADDRESS;
 const authorizedUser =
   process.env.AUTHORIZED_USER || "0x9e6AFcB1462997c867F5755d4E533E8917d347Af";
 const authorizedAppTelegram =
@@ -25,15 +27,15 @@ const authorizedAppMail =
   "0xD5054a18565c4a9E5c1aa3cEB53258bd59d4c78C"; // Web3Mail application address
 
 // Common utility functions
-const validatePrivateKey = () => {
+const validatePrivateKey = (privateKey: string) => {
   if (!privateKey) {
     throw new Error(chalk.red("Error: PRIVATE_KEY not found in the .env file"));
   }
 };
 
 const initializeIExec = () => {
-  validatePrivateKey();
-  const ethProvider = getWeb3Provider(privateKey!, {
+  validatePrivateKey(userPrivateKey!);
+  const ethProvider = getWeb3Provider(userPrivateKey!, {
     host: 42161, // Arbitrum mainnet
   });
   const iexec = new IExec({
@@ -43,8 +45,8 @@ const initializeIExec = () => {
 };
 
 const initializeDataProtector = () => {
-  validatePrivateKey();
-  const ethProvider = getWeb3Provider(privateKey!, {
+  validatePrivateKey(userPrivateKey!);
+  const ethProvider = getWeb3Provider(userPrivateKey!, {
     host: 42161, // Arbitrum mainnet
   });
   const dataProtector = new IExecDataProtectorCore(ethProvider);
@@ -52,7 +54,7 @@ const initializeDataProtector = () => {
 };
 
 const initializeWeb3Telegram = () => {
-  validatePrivateKey();
+  validatePrivateKey(privateKey!);
   const ethProviderWeb3telegram = getWeb3Provider(privateKey!, {
     host: 42161, // Arbitrum mainnet
   });
@@ -63,7 +65,7 @@ const initializeWeb3Telegram = () => {
 };
 
 const initializeWeb3Mail = () => {
-  validatePrivateKey();
+  validatePrivateKey(privateKey!);
   const ethProviderWeb3mail = getWeb3Provider(privateKey!, {
     host: 42161, // Arbitrum mainnet
   });
@@ -271,68 +273,173 @@ program
         )
       );
 
-      // --- STEP 1: Data configuration and protection ---
-      console.log(chalk.yellow.bold("📝 Step 1: Protecting data..."));
+      // --- STEP 1: Check existing protected data and access ---
+      console.log(
+        chalk.yellow.bold(
+          "🔍 Step 1: Checking existing protected data and access..."
+        )
+      );
 
       const dataProtector = initializeDataProtector();
-      const alreadyProtectedData = await dataProtector.getProtectedData({
-        owner: authorizedUser,
+
+      // Get all protected data owned by the user with the correct schema
+      const protectedDataList = await dataProtector.getProtectedData({
+        owner: userAddress,
         requiredSchema: {
           [dataKey]: "string",
           apebonddata: "string",
         },
       });
-      if (alreadyProtectedData.length > 0) {
-        console.log(chalk.green.bold(`✅ Data already protected!`));
-        return;
+
+      console.log(
+        chalk.blue(
+          `   Found ${protectedDataList.length} existing protected data for ${serviceName}`
+        )
+      );
+
+      let protectedDataAddress: string = "";
+      let shouldGrantAccess = true;
+
+      if (protectedDataList.length > 0) {
+        // Check if any of the existing protected data already has access to this service
+        console.log(
+          chalk.yellow.bold("\n🔍 Step 1.1: Checking existing access...")
+        );
+
+        let foundExistingAccess = false;
+        for (let i = 0; i < protectedDataList.length; i++) {
+          const protectedData = protectedDataList[i];
+          console.log(
+            chalk.blue(
+              `   🔍 Checking access for protected data ${i + 1}/${
+                protectedDataList.length
+              }: ${chalk.cyan(protectedData.address)}`
+            )
+          );
+
+          try {
+            const grantedAccessResponse = await dataProtector.getGrantedAccess({
+              protectedData: protectedData.address,
+              authorizedApp: appAddress,
+              authorizedUser,
+              isUserStrict: true,
+            });
+
+            const grantedAccess = grantedAccessResponse.grantedAccess || [];
+            if (grantedAccess.length > 0) {
+              console.log(
+                chalk.green(
+                  `   ✅ Found existing access for this protected data`
+                )
+              );
+              foundExistingAccess = true;
+              protectedDataAddress = protectedData.address;
+              shouldGrantAccess = false;
+              break;
+            } else {
+              console.log(
+                chalk.blue(`   ℹ️  No access found for this protected data`)
+              );
+            }
+          } catch (error) {
+            console.log(
+              chalk.red(
+                `   ❌ Failed to check access for ${protectedData.address}`
+              )
+            );
+            if (error instanceof Error) {
+              console.log(chalk.red(`   Error: ${error.message}`));
+            }
+          }
+        }
+
+        if (foundExistingAccess) {
+          console.log(
+            chalk.green.bold(`✅ Already subscribed to ${serviceName}!`)
+          );
+          console.log(
+            chalk.blue(
+              `   Using existing protected data: ${chalk.cyan(
+                protectedDataAddress
+              )}`
+            )
+          );
+        } else {
+          // No existing access found, use the first available protected data
+          protectedDataAddress = protectedDataList[0].address;
+          console.log(
+            chalk.green(`✅ Using existing protected data without access`)
+          );
+          console.log(
+            chalk.blue(
+              `   Protected data address: ${chalk.cyan(protectedDataAddress)}`
+            )
+          );
+        }
+      } else {
+        // No protected data found, create a new one
+        console.log(
+          chalk.yellow.bold("\n🔒 Step 1.2: Creating new protected data...")
+        );
+
+        const newProtectedData = await dataProtector.protectData({
+          name: dataName,
+          data: {
+            [dataKey]: protectedDataInput,
+            apebonddata: "apebond",
+          },
+        });
+
+        protectedDataAddress = newProtectedData.address;
+        console.log(
+          chalk.green(
+            `✅ New protected data created! Address: ${chalk.cyan(
+              protectedDataAddress
+            )}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   ${
+              dataKey === "telegram_chatId" ? "Chat ID" : "Email"
+            }: ${chalk.cyan(protectedDataInput)}`
+          )
+        );
       }
 
-      // Protect the data
-      const protectedData = await dataProtector.protectData({
-        name: dataName,
-        data: {
-          [dataKey]: protectedDataInput,
-          apebonddata: "apebond",
-        },
-      });
-
-      console.log(chalk.green.bold(`✅ Data protected successfully!`));
-      console.log(
-        chalk.gray(
-          `   Protected data address: ${chalk.cyan(protectedData.address)}`
-        )
-      );
-      console.log(
-        chalk.gray(
-          `   ${
-            dataKey === "telegram_chatId" ? "Chat ID" : "Email"
-          }: ${chalk.cyan(protectedDataInput)}\n`
-        )
-      );
-
       // --- STEP 2: Access authorization ---
-      console.log(chalk.yellow.bold("🔐 Step 2: Granting access..."));
+      if (shouldGrantAccess) {
+        console.log(chalk.yellow.bold("🔐 Step 2: Granting access..."));
 
-      // Grant access to the application and authorized user
-      await dataProtector.grantAccess({
-        protectedData: protectedData.address,
-        authorizedApp: appAddress,
-        authorizedUser,
-        pricePerAccess,
-        numberOfAccess,
-      });
+        // Grant access to the application and authorized user
+        await dataProtector.grantAccess({
+          protectedData: protectedDataAddress,
+          authorizedApp: appAddress,
+          authorizedUser,
+          pricePerAccess,
+          numberOfAccess,
+        });
 
-      console.log(chalk.green.bold(`✅ Access granted successfully!`));
-      console.log(
-        chalk.gray(`   Authorized user: ${chalk.cyan(authorizedUser)}`)
-      );
-      console.log(
-        chalk.gray(`   Price per access: ${chalk.cyan(pricePerAccess)} RLC`)
-      );
-      console.log(
-        chalk.gray(`   Number of access: ${chalk.cyan(numberOfAccess)}`)
-      );
-      console.log(chalk.gray(`   App address: ${chalk.cyan(appAddress)}\n`));
+        console.log(chalk.green.bold(`✅ Access granted successfully!`));
+        console.log(
+          chalk.gray(`   Authorized user: ${chalk.cyan(authorizedUser)}`)
+        );
+        console.log(
+          chalk.gray(`   Price per access: ${chalk.cyan(pricePerAccess)} RLC`)
+        );
+        console.log(
+          chalk.gray(`   Number of access: ${chalk.cyan(numberOfAccess)}`)
+        );
+        console.log(chalk.gray(`   App address: ${chalk.cyan(appAddress)}\n`));
+      } else {
+        console.log(chalk.yellow.bold("🔐 Step 2: Access already granted"));
+        console.log(
+          chalk.blue(`   Access was already granted for this protected data.`)
+        );
+        console.log(
+          chalk.gray(`   Protected data: ${chalk.cyan(protectedDataAddress)}\n`)
+        );
+      }
 
       console.log(chalk.green.bold("🎉 Subscription completed successfully!"));
       console.log(
@@ -475,23 +582,23 @@ program
           );
 
           let result: any;
-          if (selectedService === "telegram") {
-            result = await (web3Client as IExecWeb3telegram).sendTelegram({
-              telegramContent: content,
-              protectedData: contact.address,
-              senderName: "RandomApe",
-              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
-            });
-          } else {
-            result = await (web3Client as IExecWeb3mail).sendEmail({
-              emailSubject: content.subject,
-              emailContent: content.content,
-              protectedData: contact.address,
-              contentType: "text/plain", // text/html is also supported
-              senderName: "RandomApe",
-              workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
-            });
-          }
+          // if (selectedService === "telegram") {
+          //   result = await (web3Client as IExecWeb3telegram).sendTelegram({
+          //     telegramContent: content,
+          //     protectedData: contact.address,
+          //     senderName: "RandomApe",
+          //     workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+          //   });
+          // } else {
+          //   result = await (web3Client as IExecWeb3mail).sendEmail({
+          //     emailSubject: content.subject,
+          //     emailContent: content.content,
+          //     protectedData: contact.address,
+          //     contentType: "text/plain", // text/html is also supported
+          //     senderName: "RandomApe",
+          //     workerpoolMaxPrice: maxPrice * 1e9, // Convert to nRLC
+          //   });
+          // }
 
           const sendEndTime = Date.now();
           const sendDuration = sendEndTime - sendStartTime;
@@ -858,6 +965,215 @@ program
       );
     } catch (error) {
       handleError(error, "withdrawal");
+    }
+  });
+
+program
+  .command("unsubscribe")
+  .description("Revoke access to protected data (unsubscribe from a service)")
+  .option(
+    "-s, --service <service>",
+    "Service to unsubscribe from (telegram or mail)"
+  )
+  .action(async (options) => {
+    try {
+      const dataProtector = initializeDataProtector();
+
+      console.log(chalk.cyan.bold("\n🚪 Starting unsubscribe process...\n"));
+
+      // Service selection
+      let selectedService = options.service;
+      if (!selectedService) {
+        const serviceAnswer = await inquirer.prompt([
+          {
+            type: "list",
+            name: "service",
+            message: "Which service would you like to unsubscribe from?",
+            choices: [
+              { name: "📱 Web3Telegram", value: "telegram" },
+              { name: "📧 Web3Mail", value: "mail" },
+            ],
+          },
+        ]);
+        selectedService = serviceAnswer.service;
+      }
+
+      // Validate service selection
+      if (!["telegram", "mail"].includes(selectedService)) {
+        throw new Error("Invalid service. Please choose 'telegram' or 'mail'");
+      }
+
+      const serviceName =
+        selectedService === "telegram" ? "Web3Telegram" : "Web3Mail";
+      const authorizedApp =
+        selectedService === "telegram"
+          ? authorizedAppTelegram
+          : authorizedAppMail;
+
+      console.log(
+        chalk.yellow.bold(
+          `📋 Step 1: Getting protected data for ${serviceName}...`
+        )
+      );
+
+      try {
+        // First, get all protected data owned by the user with apebonddata schema
+        const dataKey =
+          selectedService === "telegram" ? "telegram_chatId" : "email";
+        const protectedDataList = await dataProtector.getProtectedData({
+          owner: userAddress,
+          requiredSchema: {
+            [dataKey]: "string",
+            apebonddata: "string",
+          },
+        });
+
+        if (protectedDataList.length === 0) {
+          console.log(
+            chalk.blue(`   ℹ️  No protected data found for ${serviceName}`)
+          );
+          console.log(chalk.green.bold("\n🎉 Unsubscribe process completed!"));
+          console.log(chalk.blue("   No protected data was found."));
+          return;
+        }
+
+        console.log(
+          chalk.green(
+            `   ✅ Found ${protectedDataList.length} protected data for ${serviceName}`
+          )
+        );
+
+        console.log(
+          chalk.yellow.bold(
+            `\n📋 Step 2: Checking granted access for each protected data...`
+          )
+        );
+
+        // Get all granted access for each protected data
+        let allGrantedAccess: any[] = [];
+        for (let i = 0; i < protectedDataList.length; i++) {
+          const protectedData = protectedDataList[i];
+          console.log(
+            chalk.blue(
+              `   🔍 Checking access for protected data ${i + 1}/${
+                protectedDataList.length
+              }: ${chalk.cyan(protectedData.address)}`
+            )
+          );
+
+          try {
+            const grantedAccessResponse = await dataProtector.getGrantedAccess({
+              protectedData: protectedData.address,
+              authorizedApp,
+              authorizedUser,
+              isUserStrict: true,
+            });
+
+            const grantedAccess = grantedAccessResponse.grantedAccess || [];
+            if (grantedAccess.length > 0) {
+              console.log(
+                chalk.green(
+                  `   ✅ Found ${grantedAccess.length} access(es) for this protected data`
+                )
+              );
+              allGrantedAccess = allGrantedAccess.concat(grantedAccess);
+            } else {
+              console.log(
+                chalk.blue(`   ℹ️  No access found for this protected data`)
+              );
+            }
+          } catch (error) {
+            console.log(
+              chalk.red(
+                `   ❌ Failed to get granted access for ${protectedData.address}`
+              )
+            );
+            if (error instanceof Error) {
+              console.log(chalk.red(`   Error: ${error.message}`));
+            }
+          }
+        }
+
+        if (allGrantedAccess.length === 0) {
+          console.log(
+            chalk.blue(`   ℹ️  No granted access found for any protected data`)
+          );
+          console.log(chalk.green.bold("\n🎉 Unsubscribe process completed!"));
+          console.log(chalk.blue("   No access was found to revoke."));
+          return;
+        }
+
+        console.log(
+          chalk.green(
+            `   ✅ Found ${allGrantedAccess.length} total granted access(es) for ${serviceName}`
+          )
+        );
+
+        console.log(
+          chalk.yellow.bold(
+            `\n🔓 Step 3: Revoking access for ${serviceName}...`
+          )
+        );
+
+        let totalRevoked = 0;
+
+        // Revoke access for each granted access entry
+        for (let i = 0; i < allGrantedAccess.length; i++) {
+          const access = allGrantedAccess[i];
+          const dataset = access.dataset;
+
+          console.log(
+            chalk.blue(
+              `   🔓 Revoking access ${i + 1}/${
+                allGrantedAccess.length
+              }: ${chalk.cyan(dataset)}`
+            )
+          );
+
+          try {
+            await dataProtector.revokeAllAccess({
+              protectedData: dataset,
+              authorizedApp,
+              authorizedUser,
+            });
+
+            console.log(
+              chalk.green(`   ✅ Successfully revoked access to ${dataset}`)
+            );
+            totalRevoked++;
+          } catch (error) {
+            console.log(
+              chalk.red(`   ❌ Failed to revoke access to ${dataset}`)
+            );
+            if (error instanceof Error) {
+              console.log(chalk.red(`   Error: ${error.message}`));
+            }
+          }
+        }
+
+        console.log(chalk.green.bold("\n🎉 Unsubscribe process completed!"));
+        if (totalRevoked > 0) {
+          console.log(
+            chalk.blue(
+              `   Successfully revoked access to ${totalRevoked} protected data`
+            )
+          );
+          console.log(
+            chalk.blue(`   You are now unsubscribed from ${serviceName}.`)
+          );
+        } else {
+          console.log(chalk.blue("   No access was found to revoke."));
+        }
+      } catch (error) {
+        console.log(
+          chalk.red(`   ❌ Failed to get granted access for ${serviceName}`)
+        );
+        if (error instanceof Error) {
+          console.log(chalk.red(`   Error: ${error.message}`));
+        }
+      }
+    } catch (error) {
+      handleError(error, "unsubscribe");
     }
   });
 
